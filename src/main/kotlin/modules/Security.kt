@@ -75,11 +75,14 @@ fun Application.configureSecurity() {
         }
         session<UserSession>("session-auth") {
             validate { session ->
-                val session = sessionManager[session.sessionId] ?: return@validate null
-                userManager[session.userId] ?: return@validate null
-                val isExpired = session.expiresAt < System.currentTimeMillis()
-                if (isExpired) return@validate null
-                return@validate session
+                val storedSession = sessionManager[session.sessionId] ?: return@validate null
+                userManager[storedSession.userId] ?: return@validate null
+                val isExpired = storedSession.expiresAt < System.currentTimeMillis()
+                if (isExpired) {
+                    sessionManager.delete(storedSession.id)
+                    return@validate null
+                }
+                return@validate storedSession
             }
             challenge { call.respondRedirect("/login") }
         }
