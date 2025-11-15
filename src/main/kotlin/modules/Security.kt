@@ -1,26 +1,25 @@
-package org.srino
+package org.srino.modules
 
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.apache.*
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.json
+import io.ktor.serialization.gson.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
 import io.ktor.util.*
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import java.util.UUID
+import org.srino.managers.GsonSessionSerializer
+import org.srino.sessionManager
+import org.srino.userManager
+import java.util.*
 
-@Serializable
 data class UserSession(val sessionId: String)
 
-@Serializable
 data class User(
     val id: String,
     val username: String,
@@ -29,7 +28,19 @@ data class User(
     val email: String,
 )
 
+data class Session(
+    val id: String,
+    val userId: String,
+    val expiresAt: Long = System.currentTimeMillis() + 60 * 60 * 24 * 1000
+)
+
 fun Application.configureSecurity() {
+
+    val httpClient = HttpClient(Apache) {
+        install(ContentNegotiation) {
+            gson()
+        }
+    }
 
     val signingKey = hex(this@configureSecurity.environment.config.property("ktor.authentication.keys.sign").getString())
     val encryptKey = hex(this@configureSecurity.environment.config.property("ktor.authentication.keys.encrypt").getString())
@@ -39,6 +50,7 @@ fun Application.configureSecurity() {
             cookie.httpOnly = true
             cookie.extensions["SameSite"] = "lax"
 
+            serializer = GsonSessionSerializer(UserSession::class.java)
             transform(SessionTransportTransformerEncrypt(encryptKey, signingKey))
         }
     }
@@ -59,23 +71,21 @@ fun Application.configureSecurity() {
                     defaultScopes = listOf("email", "identify"),
                 )
             }
-            client = HttpClient(Apache)
+            client = httpClient
         }
         session<UserSession>("session-auth") {
-            validate { session -> session }
+            validate { session ->
+                val session = sessionManager[session.sessionId] ?: return@validate null
+                userManager[session.userId] ?: return@validate null
+                val isExpired = session.expiresAt < System.currentTimeMillis()
+                if (isExpired) return@validate null
+                return@validate session
+            }
             challenge { call.respondRedirect("/login") }
         }
     }
 
     routing {
-
-        val httpClient = HttpClient(Apache) {
-            install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                })
-            }
-        }
 
         authenticate("auth-oauth-discord") {
             get("/login") {
@@ -83,17 +93,26 @@ fun Application.configureSecurity() {
             }
 
             get("/callback") {
-                val currentPrincipal: OAuthAccessTokenResponse.OAuth2 = call.principal() ?: return@get
-
+                val currentPrincipal: OAuthAccessTokenResponse.OAuth2 = call.principal() ?: run {
+                    call.respondText("An error occurred while authenticating")
+                    return@get
+                }
                 val user = httpClient.get("https://discord.com/api/users/@me") {
                     bearerAuth(currentPrincipal.accessToken)
                 }.body<User>()
 
-                val session = UserSession(UUID.randomUUID().toString())
+                userManager[user.id] = user
 
-                println(Json.encodeToString(user))
+                val session = Session(
+                    UUID.randomUUID().toString(),
+                    user.id,
+                )
 
-                call.sessions.set(session)
+                sessionManager[session.id] = session
+
+                val userSession = UserSession(session.id)
+                call.sessions.set(userSession)
+
                 call.respondRedirect("/check")
             }
         }

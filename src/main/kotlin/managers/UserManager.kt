@@ -1,5 +1,7 @@
 package org.srino.managers
 
-import org.srino.User
+import org.srino.application
+import org.srino.database.managers.DatabaseManager
+import org.srino.modules.User
 
-val users: MutableMap<String, User> = mutableMapOf()
+class UserManager: DatabaseManager<String, User>("users", application, String::class.java, User::class.java)
