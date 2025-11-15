@@ -7,6 +7,12 @@ plugins {
     kotlin("plugin.serialization") version "2.2.20"
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+}
+
 group = "org.srino"
 version = "0.0.1"
 
@@ -20,6 +26,7 @@ dependencies {
     implementation("io.ktor:ktor-client-core")
     implementation("io.ktor:ktor-client-apache")
     implementation("io.ktor:ktor-server-content-negotiation")
+    implementation("io.ktor:ktor-client-content-negotiation:3.3.2")
     implementation("io.ktor:ktor-serialization-kotlinx-json")
     implementation("io.ktor:ktor-server-netty")
     implementation("ch.qos.logback:logback-classic:$logback_version")

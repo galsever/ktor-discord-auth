@@ -3,8 +3,11 @@ ktor:
     modules:
       - org.srino.ApplicationKt.module
   deployment:
-    port: 8080
+    port: 9090
   authentication:
     discord:
-      clientId: "id"
+      clientId: "clientId"
       clientSecret: "secret"
+    keys:
+      sign: "sign"
+      encrypt: "encrypt"
